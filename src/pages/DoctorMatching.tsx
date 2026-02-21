@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, Filter, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,15 +15,56 @@ import { DoctorCard } from "@/components/DoctorCard";
 import { mockDoctors, type Doctor } from "@/data/mockData";
 import { useToast } from "@/hooks/use-toast";
 
-const specialties = ["All Specialties", "Internal Medicine", "General Practitioner", "Family Medicine", "Emergency Medicine", "Pediatric Care"];
+const specialties = [
+  "All Specialties", 
+  "Internal Medicine", 
+  "General Practitioner", 
+  "Family Medicine", 
+  "Emergency Medicine", 
+  "Pediatric Care",
+  "Cardiology",
+  "Dermatology",
+  "Neurology",
+  "Gastroenterology",
+  "Orthopedics",
+  "Psychiatry",
+  "Ophthalmology",
+  "Pulmonology",
+  "Endocrinology",
+  "Rheumatology"
+];
 const availabilityFilters = ["All", "Available Now", "Available Today"];
 
 export default function DoctorMatching() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  
+  // Read URL parameters for initial filter state
+  const initialSpecialty = searchParams.get("specialty") || "All Specialties";
+  const selectedDoctorId = searchParams.get("selected");
+  
   const [searchQuery, setSearchQuery] = useState("");
-  const [specialty, setSpecialty] = useState("All Specialties");
+  const [specialty, setSpecialty] = useState(
+    specialties.includes(initialSpecialty) ? initialSpecialty : "All Specialties"
+  );
   const [availability, setAvailability] = useState("All");
+
+  // Scroll to selected doctor if specified in URL
+  useEffect(() => {
+    if (selectedDoctorId) {
+      setTimeout(() => {
+        const element = document.getElementById(`doctor-${selectedDoctorId}`);
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
+          element.classList.add("ring-2", "ring-primary", "ring-offset-2");
+          setTimeout(() => {
+            element.classList.remove("ring-2", "ring-primary", "ring-offset-2");
+          }, 2000);
+        }
+      }, 300);
+    }
+  }, [selectedDoctorId]);
 
   const filteredDoctors = mockDoctors.filter((doctor) => {
     const matchesSearch = 
@@ -144,7 +185,8 @@ export default function DoctorMatching() {
             {filteredDoctors.map((doctor, index) => (
               <div 
                 key={doctor.id}
-                className="animate-fade-in-up"
+                id={`doctor-${doctor.id}`}
+                className="animate-fade-in-up transition-all duration-300"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
                 <DoctorCard doctor={doctor} onBook={handleBook} />

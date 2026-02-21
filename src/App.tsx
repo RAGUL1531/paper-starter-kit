@@ -10,6 +10,7 @@ import Chatbot from "./pages/Chatbot";
 import DoctorMatching from "./pages/DoctorMatching";
 import Consultation from "./pages/Consultation";
 import Feedback from "./pages/Feedback";
+import RealtimeChat from "./pages/RealtimeChat";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -27,6 +28,7 @@ const App = () => (
           <Route path="/doctors" element={<DoctorMatching />} />
           <Route path="/consultation" element={<Consultation />} />
           <Route path="/feedback" element={<Feedback />} />
+          <Route path="/chat" element={<RealtimeChat />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

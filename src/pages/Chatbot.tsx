@@ -1,19 +1,86 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Send, Loader2, Stethoscope } from "lucide-react";
+import { Send, Loader2, Stethoscope, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChatMessage } from "@/components/ChatMessage";
-import { initialBotMessages, symptomResponses, type ChatMessage as ChatMessageType } from "@/data/mockData";
+import { type ChatMessage as ChatMessageType, mockDoctors, type Doctor } from "@/data/mockData";
+import { 
+  sendMessageToOpenRouter, 
+  createMedicalSystemMessage, 
+  getRecommendedSpecialties,
+  type Message 
+} from "@/services/openRouterService";
 
-const severityOptions = ["1-3 (Mild)", "4-6 (Moderate)", "7-10 (Severe)"];
+// Helper function to detect if we should recommend doctors
+function detectDoctorRecommendation(userInput: string, aiResponse: string): boolean {
+  const combinedText = (userInput + " " + aiResponse).toLowerCase();
+  
+  // Keywords that suggest medical consultation is needed
+  const consultationKeywords = [
+    "doctor", "specialist", "consult", "appointment", "see a", "visit",
+    "professional", "medical help", "get checked", "examination",
+    "recommend seeing", "should see", "talk to", "speak with"
+  ];
+  
+  // Symptom severity keywords
+  const severityKeywords = [
+    "severe", "serious", "persistent", "chronic", "urgent", "emergency",
+    "worsening", "getting worse", "unbearable", "intense"
+  ];
+  
+  return consultationKeywords.some(keyword => combinedText.includes(keyword)) ||
+         severityKeywords.some(keyword => combinedText.includes(keyword));
+}
+
+// Helper function to get relevant doctors based on LLM-recommended specialties
+async function getRelevantDoctors(conversationHistory: Message[]): Promise<Doctor[]> {
+  try {
+    // Ask the LLM which specialties are most appropriate
+    const recommendedSpecialties = await getRecommendedSpecialties(conversationHistory);
+    
+    if (recommendedSpecialties.length === 0) {
+      return [];
+    }
+    
+    // Filter doctors by recommended specialties and availability
+    const relevantDoctors = mockDoctors
+      .filter(doctor => recommendedSpecialties.includes(doctor.specialty))
+      .sort((a, b) => {
+        // Prioritize available doctors
+        if (a.availability === "available" && b.availability !== "available") return -1;
+        if (a.availability !== "available" && b.availability === "available") return 1;
+        // Then by rating
+        return b.rating - a.rating;
+      })
+      .slice(0, 3); // Return top 3 doctors
+    
+    return relevantDoctors;
+  } catch (error) {
+    console.error("Error getting relevant doctors:", error);
+    return [];
+  }
+}
+
 
 export default function Chatbot() {
   const navigate = useNavigate();
-  const [messages, setMessages] = useState<ChatMessageType[]>(initialBotMessages);
+  
+  // Initial welcome message
+  const initialMessage: ChatMessageType = {
+    id: "welcome",
+    type: "bot",
+    content: "👋 Hello! I'm MediBot AI, your personal health assistant powered by advanced AI.\n\nI'm here to help you understand your symptoms and guide you to the right care. Please describe what you're experiencing, and I'll do my best to assist you.\n\n*Remember: I provide guidance only and am not a substitute for professional medical advice.*",
+    timestamp: new Date(),
+  };
+  
+  const [messages, setMessages] = useState<ChatMessageType[]>([initialMessage]);
+  const [conversationHistory, setConversationHistory] = useState<Message[]>([
+    createMedicalSystemMessage()
+  ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [symptomCollected, setSymptomCollected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -24,24 +91,13 @@ export default function Chatbot() {
     scrollToBottom();
   }, [messages]);
 
-  const addBotMessage = (content: string, options?: string[]) => {
-    setIsTyping(true);
-    setTimeout(() => {
-      const newMessage: ChatMessageType = {
-        id: Date.now().toString(),
-        type: "bot",
-        content,
-        timestamp: new Date(),
-        options,
-      };
-      setMessages((prev) => [...prev, newMessage]);
-      setIsTyping(false);
-    }, 1000);
-  };
+  const handleSend = async () => {
+    if (!input.trim() || isTyping) return;
 
-  const handleSend = () => {
-    if (!input.trim()) return;
+    // Clear any previous errors
+    setError(null);
 
+    // Add user message to UI
     const userMessage: ChatMessageType = {
       id: Date.now().toString(),
       type: "user",
@@ -49,48 +105,73 @@ export default function Chatbot() {
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMessage]);
-    setInput("");
 
-    // Simple keyword matching for demo
-    const lowerInput = input.toLowerCase();
-    let response = symptomResponses.default;
-    
-    if (lowerInput.includes("headache") || lowerInput.includes("head")) {
-      response = symptomResponses.headache;
-    } else if (lowerInput.includes("fever") || lowerInput.includes("temperature")) {
-      response = symptomResponses.fever;
-    } else if (lowerInput.includes("cough") || lowerInput.includes("throat")) {
-      response = symptomResponses.cough;
-    }
-
-    addBotMessage(response, severityOptions);
-    setSymptomCollected(true);
-  };
-
-  const handleOptionClick = (option: string) => {
-    const userMessage: ChatMessageType = {
-      id: Date.now().toString(),
-      type: "user",
-      content: option,
-      timestamp: new Date(),
+    // Add to conversation history for OpenRouter
+    const userMessageForAPI: Message = {
+      role: "user",
+      content: input,
     };
-    setMessages((prev) => [...prev, userMessage]);
+    
+    const updatedHistory = [...conversationHistory, userMessageForAPI];
+    setConversationHistory(updatedHistory);
+    
+    setInput("");
+    setIsTyping(true);
 
-    if (severityOptions.includes(option)) {
-      addBotMessage(
-        "Thank you for providing those details. Based on your symptoms, I recommend consulting with a healthcare professional.\n\nI've analyzed your symptoms and can now match you with suitable doctors who specialize in treating conditions like yours.\n\nWould you like me to find doctors for you?",
-        ["Yes, find doctors", "Tell me more"]
-      );
-    } else if (option === "Yes, find doctors") {
-      addBotMessage(
-        "Great! I'm analyzing your symptoms and finding the best-matched doctors for you...\n\n✓ Symptom analysis complete\n✓ Specialty matching in progress\n✓ Checking real-time availability\n\nRedirecting you to your personalized doctor matches..."
-      );
-      setTimeout(() => navigate("/doctors"), 2000);
-    } else if (option === "Tell me more") {
-      addBotMessage(
-        "Of course! Our SMaRT system uses advanced AI to:\n\n🔹 Analyze your symptoms using Natural Language Processing\n🔹 Match you with specialists based on your specific needs\n🔹 Consider doctor ratings, availability, and expertise\n🔹 Enable secure video consultations\n\nThis ensures you get the right care, faster. Ready to see your matches?",
-        ["Yes, find doctors"]
-      );
+    try {
+      // Call OpenRouter API
+      const aiResponse = await sendMessageToOpenRouter(updatedHistory);
+
+      // Add AI response to conversation history
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: aiResponse,
+      };
+      const finalHistory = [...updatedHistory, assistantMessage];
+      setConversationHistory(finalHistory);
+
+      // Detect if we should recommend doctors
+      const shouldRecommendDoctors = detectDoctorRecommendation(input, aiResponse);
+      const recommendedDoctors = shouldRecommendDoctors 
+        ? await getRelevantDoctors(finalHistory) 
+        : undefined;
+
+      // Add AI response to UI
+      const botMessage: ChatMessageType = {
+        id: (Date.now() + 1).toString(),
+        type: "bot",
+        content: aiResponse,
+        timestamp: new Date(),
+        doctors: recommendedDoctors,
+      };
+      setMessages((prev) => [...prev, botMessage]);
+
+      // If doctors are recommended, add a follow-up message
+      if (recommendedDoctors && recommendedDoctors.length > 0) {
+        setTimeout(() => {
+          const followUpMessage: ChatMessageType = {
+            id: (Date.now() + 2).toString(),
+            type: "bot",
+            content: "💡 Based on your symptoms, I've found some specialists who can help you. Click 'View Profile' to see more details and book a consultation.",
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, followUpMessage]);
+        }, 500);
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred";
+      setError(errorMessage);
+      
+      // Add error message to UI
+      const errorBotMessage: ChatMessageType = {
+        id: (Date.now() + 1).toString(),
+        type: "bot",
+        content: `⚠️ I'm having trouble connecting right now. ${errorMessage}\n\nPlease check your API key configuration or try again later.`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorBotMessage]);
+    } finally {
+      setIsTyping(false);
     }
   };
 
@@ -126,8 +207,7 @@ export default function Chatbot() {
           {messages.map((message) => (
             <ChatMessage 
               key={message.id} 
-              message={message} 
-              onOptionClick={handleOptionClick}
+              message={message}
             />
           ))}
           

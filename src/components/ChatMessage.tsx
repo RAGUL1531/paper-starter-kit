@@ -1,6 +1,8 @@
 import { cn } from "@/lib/utils";
-import { Bot, User } from "lucide-react";
-import type { ChatMessage as ChatMessageType } from "@/data/mockData";
+import { Bot, User, Star, Calendar, DollarSign, ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import type { ChatMessage as ChatMessageType, Doctor } from "@/data/mockData";
+import { Button } from "@/components/ui/button";
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -9,6 +11,13 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
   const isBot = message.type === "bot";
+  const navigate = useNavigate();
+
+  const handleDoctorClick = (doctor: Doctor) => {
+    // Navigate to doctors page with the specialty filter and selected doctor
+    navigate(`/doctors?specialty=${encodeURIComponent(doctor.specialty)}&selected=${doctor.id}`);
+  };
+
 
   return (
     <div
@@ -45,6 +54,64 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
               >
                 {option}
               </button>
+            ))}
+          </div>
+        )}
+
+        {/* Doctor Cards */}
+        {message.doctors && message.doctors.length > 0 && (
+          <div className="mt-4 space-y-3">
+            {message.doctors.map((doctor) => (
+              <div
+                key={doctor.id}
+                className="bg-background border border-border rounded-xl p-4 hover:shadow-md transition-shadow"
+              >
+                <div className="flex gap-3">
+                  <img
+                    src={doctor.image}
+                    alt={doctor.name}
+                    className="w-16 h-16 rounded-full object-cover"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-semibold text-foreground text-sm">
+                      {doctor.name}
+                    </h4>
+                    <p className="text-xs text-muted-foreground">
+                      {doctor.specialty} • {doctor.credentials}
+                    </p>
+                    
+                    <div className="flex items-center gap-3 mt-2 text-xs">
+                      <div className="flex items-center gap-1 text-yellow-600">
+                        <Star className="h-3 w-3 fill-current" />
+                        <span className="font-medium">{doctor.rating}</span>
+                        <span className="text-muted-foreground">
+                          ({doctor.reviewCount})
+                        </span>
+                      </div>
+                      
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Calendar className="h-3 w-3" />
+                        <span>{doctor.nextAvailable}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                      <DollarSign className="h-3 w-3" />
+                      <span>${doctor.consultationFee} consultation</span>
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => handleDoctorClick(doctor)}
+                  size="sm"
+                  className="w-full mt-3 gap-2"
+                  variant="default"
+                >
+                  View Profile
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </div>
             ))}
           </div>
         )}

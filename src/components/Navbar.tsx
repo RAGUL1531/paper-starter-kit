@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Activity, MessageCircle, Users, Video, Star } from "lucide-react";
+import { Activity, MessageCircle, Users, Video, Star, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -7,6 +7,7 @@ const navItems = [
   { path: "/chatbot", label: "MediBot", icon: MessageCircle },
   { path: "/doctors", label: "Find Doctors", icon: Users },
   { path: "/consultation", label: "Consultation", icon: Video },
+  { path: "/chat", label: "Live Chat", icon: MessageSquare },
   { path: "/feedback", label: "Feedback", icon: Star },
 ];
 
