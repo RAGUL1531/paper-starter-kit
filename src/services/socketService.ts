@@ -24,7 +24,7 @@ export interface CallData {
 
 class SocketService {
   private socket: Socket | null = null;
-  private serverUrl = 'http://localhost:3001';
+  private serverUrl = 'http://192.168.1.8:3001';
 
   connect(userData: { name: string; avatar?: string }) {
     if (this.socket?.connected) {

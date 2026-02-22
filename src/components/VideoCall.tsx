@@ -8,10 +8,11 @@ import { socketService } from '@/services/socketService';
 interface VideoCallProps {
   recipientId: string;
   recipientName: string;
+  isInitiator: boolean; // true = caller (creates offer), false = receiver (waits for offer)
   onEndCall: () => void;
 }
 
-export default function VideoCall({ recipientId, recipientName, onEndCall }: VideoCallProps) {
+export default function VideoCall({ recipientId, recipientName, isInitiator, onEndCall }: VideoCallProps) {
   const [isVideoEnabled, setIsVideoEnabled] = useState(false); // Start with video OFF
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -34,7 +35,9 @@ export default function VideoCall({ recipientId, recipientName, onEndCall }: Vid
 
     return () => {
       clearInterval(timer);
-      handleEndCall();
+      // Only cleanup local resources on unmount — do NOT send call:end here
+      // (React strict mode double-mounts would send call:end prematurely)
+      webRTCService.endCall();
     };
   }, []);
 
@@ -48,13 +51,27 @@ export default function VideoCall({ recipientId, recipientName, onEndCall }: Vid
         localVideoRef.current.srcObject = stream;
       }
 
-      // Create offer to start the call
-      await webRTCService.createOffer(recipientId);
+      // Register callback for remote stream
+      webRTCService.onRemoteStream((remoteStream) => {
+        console.log('🎥 Remote stream received in VideoCall UI');
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+        }
+      });
 
-      // Monitor for remote stream
+      // Only the caller creates the offer; the receiver waits for the offer
+      if (isInitiator) {
+        console.log('📞 Initiator: creating offer...');
+        await webRTCService.createOffer(recipientId);
+      } else {
+        console.log('📞 Receiver: waiting for offer...');
+        // The offer will be handled by webRTCService.setupSocketListeners()
+      }
+
+      // Also poll for remote stream as a fallback
       const checkRemoteStream = setInterval(() => {
         const remoteStream = webRTCService.getRemoteStream();
-        if (remoteStream && remoteVideoRef.current) {
+        if (remoteStream && remoteVideoRef.current && !remoteVideoRef.current.srcObject) {
           remoteVideoRef.current.srcObject = remoteStream;
           clearInterval(checkRemoteStream);
         }

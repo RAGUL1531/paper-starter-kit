@@ -6,6 +6,8 @@ export class WebRTCService {
   private remoteStream: MediaStream | null = null;
   private screenStream: MediaStream | null = null;
   private recipientId: string | null = null;
+  private listenersRegistered = false;
+  private onRemoteStreamCallback: ((stream: MediaStream) => void) | null = null;
 
   private configuration: RTCConfiguration = {
     iceServers: [
@@ -15,32 +17,60 @@ export class WebRTCService {
     ]
   };
 
-  constructor() {
-    this.setupSocketListeners();
-  }
+  // Call this AFTER socketService.connect() so the socket exists
+  setupSocketListeners() {
+    if (this.listenersRegistered) return;
+    this.listenersRegistered = true;
 
-  private setupSocketListeners() {
-    // Handle incoming offer
-    socketService.onOffer(async ({ offer, senderId }) => {
-      console.log('📥 Received offer from:', senderId);
-      this.recipientId = senderId;
-      await this.handleOffer(offer);
+    const socket = socketService.getSocket();
+    if (!socket) {
+      console.error('❌ Cannot setup WebRTC listeners: socket is not connected');
+      return;
+    }
+
+    // Handle incoming offer (receiver side)
+    socket.on('webrtc:offer', async (data: { offer: RTCSessionDescriptionInit; senderId: string }) => {
+      console.log('📥 Received offer from:', data.senderId);
+      this.recipientId = data.senderId;
+      
+      // Initialize local stream if not already done
+      if (!this.localStream) {
+        try {
+          await this.initializeLocalStream(false, true);
+        } catch (err) {
+          console.error('Error initializing local stream on offer:', err);
+        }
+      }
+      
+      await this.handleOffer(data.offer);
     });
 
-    // Handle answer
-    socketService.onAnswer(async ({ answer, senderId }) => {
-      console.log('📥 Received answer from:', senderId);
-      await this.handleAnswer(answer);
+    // Handle answer (caller side)
+    socket.on('webrtc:answer', async (data: { answer: RTCSessionDescriptionInit; senderId: string }) => {
+      console.log('📥 Received answer from:', data.senderId);
+      await this.handleAnswer(data.answer);
     });
 
     // Handle ICE candidate
-    socketService.onIceCandidate(async ({ candidate, senderId }) => {
-      console.log('📥 Received ICE candidate from:', senderId);
-      await this.handleIceCandidate(candidate);
+    socket.on('webrtc:ice-candidate', async (data: { candidate: RTCIceCandidate; senderId: string }) => {
+      console.log('📥 Received ICE candidate from:', data.senderId);
+      await this.handleIceCandidate(data.candidate);
     });
+
+    console.log('✅ WebRTC socket listeners registered');
+  }
+
+  onRemoteStream(callback: (stream: MediaStream) => void) {
+    this.onRemoteStreamCallback = callback;
   }
 
   async initializeLocalStream(videoEnabled = true, audioEnabled = true): Promise<MediaStream> {
+    // Don't re-initialize if we already have a stream
+    if (this.localStream) {
+      console.log('ℹ️ Local stream already exists, reusing');
+      return this.localStream;
+    }
+
     try {
       this.localStream = await navigator.mediaDevices.getUserMedia({
         video: videoEnabled ? {
@@ -90,6 +120,10 @@ export class WebRTCService {
       event.streams[0].getTracks().forEach(track => {
         this.remoteStream?.addTrack(track);
       });
+      // Notify UI about the remote stream
+      if (this.remoteStream && this.onRemoteStreamCallback) {
+        this.onRemoteStreamCallback(this.remoteStream);
+      }
     };
 
     // Handle connection state changes
@@ -165,14 +199,41 @@ export class WebRTCService {
   }
 
   // Media controls
-  toggleVideo(enabled: boolean) {
-    if (this.localStream) {
-      this.localStream.getVideoTracks().forEach(track => {
-        track.enabled = enabled;
-      });
-      if (this.recipientId) {
-        socketService.toggleVideo(this.recipientId, enabled);
+  async toggleVideo(enabled: boolean) {
+    if (!this.localStream) return;
+
+    if (enabled) {
+      // No video track exists (started audio-only) — request camera
+      const existingVideoTracks = this.localStream.getVideoTracks();
+      if (existingVideoTracks.length === 0) {
+        try {
+          const videoStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
+          });
+          const videoTrack = videoStream.getVideoTracks()[0];
+          this.localStream.addTrack(videoTrack);
+
+          // Add the new video track to the peer connection
+          if (this.peerConnection) {
+            this.peerConnection.addTrack(videoTrack, this.localStream);
+          }
+          console.log('✅ Camera turned on');
+        } catch (error) {
+          console.error('❌ Error accessing camera:', error);
+          return;
+        }
+      } else {
+        existingVideoTracks.forEach(track => { track.enabled = true; });
       }
+    } else {
+      // Disable: stop and remove the video track
+      this.localStream.getVideoTracks().forEach(track => {
+        track.enabled = false;
+      });
+    }
+
+    if (this.recipientId) {
+      socketService.toggleVideo(this.recipientId, enabled);
     }
   }
 
@@ -270,6 +331,7 @@ export class WebRTCService {
     this.screenStream = null;
     this.peerConnection = null;
     this.recipientId = null;
+    this.onRemoteStreamCallback = null;
 
     console.log('✅ Call ended and cleaned up');
   }

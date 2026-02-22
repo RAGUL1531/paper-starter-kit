@@ -6,18 +6,17 @@ import cors from 'cors';
 const app = express();
 const httpServer = createServer(app);
 
-// Configure CORS
+// Configure CORS - allow all origins for network access
 app.use(cors({
-  origin: 'http://localhost:5173', // Vite default port
-  credentials: true
+  origin: '*',
+  credentials: false
 }));
 
-// Socket.io setup with CORS
+// Socket.io setup with CORS - allow all origins for network access
 const io = new Server(httpServer, {
   cors: {
-    origin: 'http://localhost:5173',
-    methods: ['GET', 'POST'],
-    credentials: true
+    origin: '*',
+    methods: ['GET', 'POST']
   }
 });
 
@@ -187,7 +186,7 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3001;
 
-httpServer.listen(PORT, () => {
-  console.log(`🚀 WebSocket server running on http://localhost:${PORT}`);
-  console.log(`📡 Socket.io ready for connections`);
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 WebSocket server running on http://0.0.0.0:${PORT}`);
+  console.log(`📡 Socket.io ready for connections on all network interfaces`);
 });

@@ -24,6 +24,7 @@ export default function RealtimeChat() {
   
   // Video call states
   const [inCall, setInCall] = useState(false);
+  const [isCallInitiator, setIsCallInitiator] = useState(false);
   const [incomingCall, setIncomingCall] = useState<{
     callerId: string;
     callerName: string;
@@ -56,6 +57,9 @@ export default function RealtimeChat() {
 
     setIsConnected(true);
 
+    // Register WebRTC listeners AFTER socket is connected
+    webRTCService.setupSocketListeners();
+
     // Listen for users update
     socketService.onUsersUpdate((updatedUsers) => {
       setUsers(updatedUsers.filter(u => u.socketId !== socket?.id));
@@ -84,10 +88,10 @@ export default function RealtimeChat() {
       setIncomingCall(callData);
     });
 
-    // Listen for call accepted
-    socketService.onCallAccepted(({ recipientId }) => {
-      setInCall(true);
-      setSelectedUser(users.find(u => u.socketId === recipientId) || null);
+    // Listen for call accepted - caller is already in the call,
+    // so we don't need to update state here (selectedUser was already set)
+    socketService.onCallAccepted(() => {
+      console.log('✅ Call accepted by recipient');
     });
 
     // Listen for call rejected
@@ -152,6 +156,7 @@ export default function RealtimeChat() {
   const handleVideoCall = (user: User) => {
     setSelectedUser(user);
     socketService.initiateCall(user.socketId, 'video');
+    setIsCallInitiator(true);
     setInCall(true);
   };
 
@@ -172,6 +177,7 @@ export default function RealtimeChat() {
     // Set the caller as selected user
     const caller = users.find(u => u.socketId === incomingCall.callerId);
     setSelectedUser(caller || null);
+    setIsCallInitiator(false);
     setInCall(true);
     setIncomingCall(null);
   };
@@ -186,6 +192,7 @@ export default function RealtimeChat() {
   const handleEndCall = () => {
     setInCall(false);
     setSelectedUser(null);
+    setIsCallInitiator(false);
   };
 
   const filteredMessages = selectedUser
@@ -232,6 +239,7 @@ export default function RealtimeChat() {
       <VideoCall
         recipientId={selectedUser.socketId}
         recipientName={selectedUser.name}
+        isInitiator={isCallInitiator}
         onEndCall={handleEndCall}
       />
     );
