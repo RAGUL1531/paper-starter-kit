@@ -36,7 +36,7 @@ export class WebRTCService {
       // Initialize local stream if not already done
       if (!this.localStream) {
         try {
-          await this.initializeLocalStream(false, true);
+          await this.initializeLocalStream(true, true);
         } catch (err) {
           console.error('Error initializing local stream on offer:', err);
         }
