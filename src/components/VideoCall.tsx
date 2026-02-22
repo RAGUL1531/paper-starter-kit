@@ -64,13 +64,14 @@ export default function VideoCall({ recipientId, recipientName, isInitiator, onE
         }
       });
 
-      // Only the caller creates the offer; the receiver waits for the offer
+      // Only the caller creates the offer; the receiver processes any queued offer
       if (isInitiator) {
         console.log('📞 Initiator: creating offer...');
         await webRTCService.createOffer(recipientId);
       } else {
-        console.log('📞 Receiver: waiting for offer...');
-        // The offer will be handled by webRTCService.setupSocketListeners()
+        console.log('📞 Receiver: processing any pending offer...');
+        // Now that stream is ready and callback is registered, process the queued offer
+        await webRTCService.processPendingOffer();
       }
 
       // Also poll for remote stream as a fallback

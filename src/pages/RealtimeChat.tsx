@@ -162,16 +162,8 @@ export default function RealtimeChat() {
 
   const handleAcceptCall = async () => {
     if (!incomingCall) return;
-
-    try {
-      // Initialize with audio-only mode (matching VideoCall default)
-      await webRTCService.initializeLocalStream(false, true);
-    } catch (error) {
-      console.error('Error initializing media:', error);
-      // Continue anyway - UI will still show
-    }
     
-    // Accept the call and show UI regardless of media initialization
+    // Accept the call - VideoCall component handles stream initialization
     socketService.acceptCall(incomingCall.callerId);
     
     // Set the caller as selected user

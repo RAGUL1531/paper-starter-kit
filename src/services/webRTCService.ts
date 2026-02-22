@@ -8,6 +8,8 @@ export class WebRTCService {
   private recipientId: string | null = null;
   private listenersRegistered = false;
   private onRemoteStreamCallback: ((stream: MediaStream) => void) | null = null;
+  private pendingOffer: { offer: RTCSessionDescriptionInit; senderId: string } | null = null;
+  private pendingIceCandidates: RTCIceCandidate[] = [];
 
   private configuration: RTCConfiguration = {
     iceServers: [
@@ -29,20 +31,20 @@ export class WebRTCService {
     }
 
     // Handle incoming offer (receiver side)
+    // Queue the offer — it will be processed when VideoCall mounts and calls processPendingOffer()
     socket.on('webrtc:offer', async (data: { offer: RTCSessionDescriptionInit; senderId: string }) => {
       console.log('📥 Received offer from:', data.senderId);
       this.recipientId = data.senderId;
-      
-      // Initialize local stream if not already done
-      if (!this.localStream) {
-        try {
-          await this.initializeLocalStream(true, true);
-        } catch (err) {
-          console.error('Error initializing local stream on offer:', err);
-        }
+
+      // If peer connection already exists (VideoCall already mounted), handle immediately
+      if (this.peerConnection && this.localStream) {
+        console.log('📥 Handling offer immediately (VideoCall already active)');
+        await this.handleOffer(data.offer);
+      } else {
+        // Queue the offer for later processing
+        console.log('📥 Queuing offer (waiting for VideoCall to mount)');
+        this.pendingOffer = { offer: data.offer, senderId: data.senderId };
       }
-      
-      await this.handleOffer(data.offer);
     });
 
     // Handle answer (caller side)
@@ -54,10 +56,34 @@ export class WebRTCService {
     // Handle ICE candidate
     socket.on('webrtc:ice-candidate', async (data: { candidate: RTCIceCandidate; senderId: string }) => {
       console.log('📥 Received ICE candidate from:', data.senderId);
-      await this.handleIceCandidate(data.candidate);
+      if (this.peerConnection) {
+        await this.handleIceCandidate(data.candidate);
+      } else {
+        // Queue ICE candidates until peer connection is ready
+        this.pendingIceCandidates.push(data.candidate);
+      }
     });
 
     console.log('✅ WebRTC socket listeners registered');
+  }
+
+  // Called by VideoCall after it mounts and sets up the stream
+  async processPendingOffer() {
+    if (this.pendingOffer) {
+      console.log('📥 Processing queued offer from:', this.pendingOffer.senderId);
+      this.recipientId = this.pendingOffer.senderId;
+      await this.handleOffer(this.pendingOffer.offer);
+      this.pendingOffer = null;
+    }
+
+    // Process any queued ICE candidates
+    if (this.pendingIceCandidates.length > 0 && this.peerConnection) {
+      console.log(`📥 Processing ${this.pendingIceCandidates.length} queued ICE candidates`);
+      for (const candidate of this.pendingIceCandidates) {
+        await this.handleIceCandidate(candidate);
+      }
+      this.pendingIceCandidates = [];
+    }
   }
 
   onRemoteStream(callback: (stream: MediaStream) => void) {
@@ -129,7 +155,7 @@ export class WebRTCService {
 
     // Handle remote stream
     this.peerConnection.ontrack = (event) => {
-      console.log('📥 Received remote track');
+      console.log('📥 Received remote track:', event.track.kind);
       if (!this.remoteStream) {
         this.remoteStream = new MediaStream();
       }
@@ -138,18 +164,19 @@ export class WebRTCService {
       });
       // Notify UI about the remote stream
       if (this.remoteStream && this.onRemoteStreamCallback) {
+        console.log('📥 Notifying UI about remote stream');
         this.onRemoteStreamCallback(this.remoteStream);
       }
     };
 
     // Handle connection state changes
     this.peerConnection.onconnectionstatechange = () => {
-      console.log('Connection state:', this.peerConnection?.connectionState);
+      console.log('🔗 Connection state:', this.peerConnection?.connectionState);
     };
 
     // Handle ICE connection state changes
     this.peerConnection.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', this.peerConnection?.iceConnectionState);
+      console.log('🧊 ICE connection state:', this.peerConnection?.iceConnectionState);
     };
 
     return this.peerConnection;
@@ -313,13 +340,15 @@ export class WebRTCService {
     // Close peer connection
     this.peerConnection?.close();
 
-    // Reset state
+    // Reset ALL state for a fresh next call
     this.localStream = null;
     this.remoteStream = null;
     this.screenStream = null;
     this.peerConnection = null;
     this.recipientId = null;
     this.onRemoteStreamCallback = null;
+    this.pendingOffer = null;
+    this.pendingIceCandidates = [];
 
     console.log('✅ Call ended and cleaned up');
   }
