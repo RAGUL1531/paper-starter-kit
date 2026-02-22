@@ -72,20 +72,36 @@ export class WebRTCService {
     }
 
     try {
+      // ALWAYS request both video and audio so the peer connection
+      // has video senders from the start (avoids renegotiation later)
       this.localStream = await navigator.mediaDevices.getUserMedia({
-        video: videoEnabled ? {
+        video: {
           width: { ideal: 1280 },
           height: { ideal: 720 },
           facingMode: 'user'
-        } : false,
-        audio: audioEnabled ? {
+        },
+        audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
-        } : false
+        }
       });
 
-      console.log('✅ Local stream initialized');
+      // Disable video track if caller doesn't want video initially
+      if (!videoEnabled) {
+        this.localStream.getVideoTracks().forEach(track => {
+          track.enabled = false;
+        });
+      }
+
+      // Disable audio track if caller doesn't want audio initially
+      if (!audioEnabled) {
+        this.localStream.getAudioTracks().forEach(track => {
+          track.enabled = false;
+        });
+      }
+
+      console.log('✅ Local stream initialized (video:', videoEnabled, ', audio:', audioEnabled, ')');
       return this.localStream;
     } catch (error) {
       console.error('❌ Error accessing media devices:', error);
@@ -199,39 +215,11 @@ export class WebRTCService {
   }
 
   // Media controls
-  async toggleVideo(enabled: boolean) {
+  toggleVideo(enabled: boolean) {
     if (!this.localStream) return;
-
-    if (enabled) {
-      // No video track exists (started audio-only) — request camera
-      const existingVideoTracks = this.localStream.getVideoTracks();
-      if (existingVideoTracks.length === 0) {
-        try {
-          const videoStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }
-          });
-          const videoTrack = videoStream.getVideoTracks()[0];
-          this.localStream.addTrack(videoTrack);
-
-          // Add the new video track to the peer connection
-          if (this.peerConnection) {
-            this.peerConnection.addTrack(videoTrack, this.localStream);
-          }
-          console.log('✅ Camera turned on');
-        } catch (error) {
-          console.error('❌ Error accessing camera:', error);
-          return;
-        }
-      } else {
-        existingVideoTracks.forEach(track => { track.enabled = true; });
-      }
-    } else {
-      // Disable: stop and remove the video track
-      this.localStream.getVideoTracks().forEach(track => {
-        track.enabled = false;
-      });
-    }
-
+    this.localStream.getVideoTracks().forEach(track => {
+      track.enabled = enabled;
+    });
     if (this.recipientId) {
       socketService.toggleVideo(this.recipientId, enabled);
     }
