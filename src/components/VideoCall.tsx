@@ -31,7 +31,23 @@ export default function VideoCall({ recipientId, recipientName, isInitiator, onE
       initializedRef.current = true;
       initializeCall();
     }
-    setupEventListeners();
+
+    // Setup socket listeners with named references so we can clean them up
+    const socket = socketService.getSocket();
+
+    const onPeerVideoToggle = (data: { enabled: boolean }) => {
+      setPeerVideoEnabled(data.enabled);
+    };
+    const onPeerAudioToggle = (data: { enabled: boolean }) => {
+      setPeerAudioEnabled(data.enabled);
+    };
+    const onCallEnded = () => {
+      handleEndCall();
+    };
+
+    socket?.on('call:peer-video-toggle', onPeerVideoToggle);
+    socket?.on('call:peer-audio-toggle', onPeerAudioToggle);
+    socket?.on('call:ended', onCallEnded);
 
     // Call duration timer
     const timer = setInterval(() => {
@@ -40,9 +56,10 @@ export default function VideoCall({ recipientId, recipientName, isInitiator, onE
 
     return () => {
       clearInterval(timer);
-      // Do NOT call webRTCService.endCall() here!
-      // React strict mode double-mounts would destroy the connection.
-      // Cleanup only happens via the explicit End Call button.
+      // Remove ONLY the listeners we added — leave chat listeners intact
+      socket?.off('call:peer-video-toggle', onPeerVideoToggle);
+      socket?.off('call:peer-audio-toggle', onPeerAudioToggle);
+      socket?.off('call:ended', onCallEnded);
     };
   }, []);
 
@@ -70,7 +87,6 @@ export default function VideoCall({ recipientId, recipientName, isInitiator, onE
         await webRTCService.createOffer(recipientId);
       } else {
         console.log('📞 Receiver: processing any pending offer...');
-        // Now that stream is ready and callback is registered, process the queued offer
         await webRTCService.processPendingOffer();
       }
 
@@ -87,25 +103,8 @@ export default function VideoCall({ recipientId, recipientName, isInitiator, onE
       setTimeout(() => clearInterval(checkRemoteStream), 30000);
     } catch (error) {
       console.error('Error initializing call:', error);
-      // Don't show alert, just log the error - call can continue with audio only
       console.log('Continuing with audio-only mode');
     }
-  };
-
-  const setupEventListeners = () => {
-    // Listen for peer media toggles
-    socketService.onPeerVideoToggle(({ enabled }) => {
-      setPeerVideoEnabled(enabled);
-    });
-
-    socketService.onPeerAudioToggle(({ enabled }) => {
-      setPeerAudioEnabled(enabled);
-    });
-
-    // Listen for call end
-    socketService.onCallEnded(() => {
-      handleEndCall();
-    });
   };
 
   const handleToggleVideo = () => {
