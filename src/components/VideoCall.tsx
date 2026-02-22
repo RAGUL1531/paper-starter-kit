@@ -23,9 +23,14 @@ export default function VideoCall({ recipientId, recipientName, isInitiator, onE
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const callStartTimeRef = useRef<number>(Date.now());
+  const initializedRef = useRef(false);
 
   useEffect(() => {
-    initializeCall();
+    // Guard against React strict mode double-mount
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      initializeCall();
+    }
     setupEventListeners();
 
     // Call duration timer
@@ -35,9 +40,9 @@ export default function VideoCall({ recipientId, recipientName, isInitiator, onE
 
     return () => {
       clearInterval(timer);
-      // Only cleanup local resources on unmount — do NOT send call:end here
-      // (React strict mode double-mounts would send call:end prematurely)
-      webRTCService.endCall();
+      // Do NOT call webRTCService.endCall() here!
+      // React strict mode double-mounts would destroy the connection.
+      // Cleanup only happens via the explicit End Call button.
     };
   }, []);
 
