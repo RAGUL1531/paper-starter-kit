@@ -13,10 +13,10 @@ interface VideoCallProps {
 }
 
 export default function VideoCall({ recipientId, recipientName, isInitiator, onEndCall }: VideoCallProps) {
-  const [isVideoEnabled, setIsVideoEnabled] = useState(false); // Start with video OFF
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true); // Start with video ON
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [peerVideoEnabled, setPeerVideoEnabled] = useState(false); // Assume peer also starts with video off
+  const [peerVideoEnabled, setPeerVideoEnabled] = useState(true); // Assume peer also starts with video on
   const [peerAudioEnabled, setPeerAudioEnabled] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
 
@@ -48,8 +48,8 @@ export default function VideoCall({ recipientId, recipientName, isInitiator, onE
 
   const initializeCall = async () => {
     try {
-      // Get local media stream - AUDIO ONLY by default
-      const stream = await webRTCService.initializeLocalStream(false, true); // video: false, audio: true
+      // Get local media stream - VIDEO + AUDIO
+      const stream = await webRTCService.initializeLocalStream(true, true);
       
       // Display local video
       if (localVideoRef.current) {
