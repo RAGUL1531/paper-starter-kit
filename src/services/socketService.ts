@@ -24,7 +24,7 @@ export interface CallData {
 
 class SocketService {
   private socket: Socket | null = null;
-  private serverUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';
+  private serverUrl = import.meta.env.VITE_SOCKET_URL || 'https://paper-starter-kit.onrender.com';
 
   connect(userData: { name: string; avatar?: string }) {
     if (this.socket?.connected) {
