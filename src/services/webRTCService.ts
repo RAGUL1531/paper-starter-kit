@@ -13,9 +13,26 @@ export class WebRTCService {
 
   private configuration: RTCConfiguration = {
     iceServers: [
+      // STUN servers (for discovering public IP)
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' }
+      // TURN servers (for relaying media when direct connection fails)
+      // These are essential for calls across different networks / over the internet
+      {
+        urls: import.meta.env.VITE_TURN_URL || 'turn:openrelay.metered.ca:80',
+        username: import.meta.env.VITE_TURN_USERNAME || 'openrelayproject',
+        credential: import.meta.env.VITE_TURN_CREDENTIAL || 'openrelayproject'
+      },
+      {
+        urls: import.meta.env.VITE_TURN_URL_443 || 'turn:openrelay.metered.ca:443',
+        username: import.meta.env.VITE_TURN_USERNAME || 'openrelayproject',
+        credential: import.meta.env.VITE_TURN_CREDENTIAL || 'openrelayproject'
+      },
+      {
+        urls: import.meta.env.VITE_TURN_URL_TCP || 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: import.meta.env.VITE_TURN_USERNAME || 'openrelayproject',
+        credential: import.meta.env.VITE_TURN_CREDENTIAL || 'openrelayproject'
+      }
     ]
   };
 
