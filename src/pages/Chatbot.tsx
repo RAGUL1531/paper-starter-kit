@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { ChatMessage } from "@/components/ChatMessage";
 import { type ChatMessage as ChatMessageType, mockDoctors, type Doctor } from "@/data/mockData";
 import { 
-  sendMessageToOpenRouter, 
+  sendMessageToOpenRouter,
+  streamMessageFromOpenRouter,
   createMedicalSystemMessage, 
   getRecommendedSpecialties,
   type Message 
@@ -119,8 +120,47 @@ export default function Chatbot() {
     setIsTyping(true);
 
     try {
-      // Call OpenRouter API
-      const aiResponse = await sendMessageToOpenRouter(updatedHistory);
+      // Call OpenRouter API with streaming
+      const botMessageId = (Date.now() + 1).toString();
+      let streamStarted = false;
+
+      const aiResponse = await streamMessageFromOpenRouter(updatedHistory, (chunk) => {
+        if (!streamStarted) {
+          setIsTyping(false);
+          streamStarted = true;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: botMessageId,
+              type: "bot",
+              content: chunk,
+              timestamp: new Date(),
+            },
+          ]);
+        } else {
+          setMessages((prev) => 
+            prev.map((msg) => 
+              msg.id === botMessageId 
+                ? { ...msg, content: msg.content + chunk } 
+                : msg
+            )
+          );
+        }
+      });
+
+      if (!streamStarted) {
+          // If no chunks were received but request succeeded
+          setIsTyping(false);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: botMessageId,
+              type: "bot",
+              content: aiResponse,
+              timestamp: new Date(),
+            },
+          ]);
+      }
 
       // Add AI response to conversation history
       const assistantMessage: Message = {
@@ -136,15 +176,16 @@ export default function Chatbot() {
         ? await getRelevantDoctors(finalHistory) 
         : undefined;
 
-      // Add AI response to UI
-      const botMessage: ChatMessageType = {
-        id: (Date.now() + 1).toString(),
-        type: "bot",
-        content: aiResponse,
-        timestamp: new Date(),
-        doctors: recommendedDoctors,
-      };
-      setMessages((prev) => [...prev, botMessage]);
+      // Update message with recommended doctors
+      if (recommendedDoctors) {
+        setMessages((prev) => 
+          prev.map((msg) => 
+            msg.id === botMessageId 
+              ? { ...msg, doctors: recommendedDoctors } 
+              : msg
+          )
+        );
+      }
 
       // If doctors are recommended, add a follow-up message
       if (recommendedDoctors && recommendedDoctors.length > 0) {
@@ -203,7 +244,7 @@ export default function Chatbot() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="container max-w-3xl space-y-4">
+        <div className="container max-w-5xl space-y-4">
           {messages.map((message) => (
             <ChatMessage 
               key={message.id} 
@@ -232,7 +273,7 @@ export default function Chatbot() {
 
       {/* Input */}
       <div className="border-t border-border bg-card p-4">
-        <div className="container max-w-3xl">
+        <div className="container max-w-5xl">
           <div className="flex items-center gap-3">
             <Input
               value={input}

@@ -71,6 +71,88 @@ export async function sendMessageToOpenRouter(
 }
 
 /**
+ * Stream a message from OpenRouter API and get AI response in chunks
+ * @param messages - Array of conversation messages
+ * @param onChunk - Callback for when a new chunk of text is received
+ * @param model - Model to use (default: openrouter/free - always free, no paid models)
+ * @returns Full AI response text
+ */
+export async function streamMessageFromOpenRouter(
+  messages: Message[],
+  onChunk: (text: string) => void,
+  model: string = "openrouter/free"
+): Promise<string> {
+  if (!API_KEY || API_KEY === "YOUR_NEW_KEY" || API_KEY === "your_api_key_here") {
+    throw new Error(
+      "OpenRouter API key not configured. Please add VITE_OPENROUTER_API_KEY to your .env file"
+    );
+  }
+
+  try {
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${API_KEY}`,
+        "X-Title": "MediBot-AI", // Your app name
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        `OpenRouter API error: ${response.status} - ${
+          errorData.error?.message || response.statusText
+        }`
+      );
+    }
+
+    if (!response.body) throw new Error("No response body");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let fullContent = "";
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (trimmedLine.startsWith('data: ') && trimmedLine !== 'data: [DONE]') {
+          try {
+            const data = JSON.parse(trimmedLine.slice(6));
+            if (data.choices && data.choices.length > 0 && data.choices[0].delta?.content) {
+              const content = data.choices[0].delta.content;
+              fullContent += content;
+              onChunk(content);
+            }
+          } catch (e) {
+            // Ignore parse errors from incomplete chunks
+          }
+        }
+      }
+    }
+
+    return fullContent;
+  } catch (error) {
+    console.error("Error streaming from OpenRouter API:", error);
+    throw error;
+  }
+}
+
+/**
  * Create a system message for medical chatbot context
  */
 export function createMedicalSystemMessage(): Message {

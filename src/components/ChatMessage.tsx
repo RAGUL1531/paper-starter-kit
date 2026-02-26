@@ -3,6 +3,8 @@ import { Bot, User, Star, Calendar, DollarSign, ArrowRight } from "lucide-react"
 import { useNavigate } from "react-router-dom";
 import type { ChatMessage as ChatMessageType, Doctor } from "@/data/mockData";
 import { Button } from "@/components/ui/button";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -34,15 +36,23 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
       
       <div
         className={cn(
-          "max-w-[80%] rounded-2xl px-4 py-3",
+          "max-w-[95%] md:max-w-[85%] rounded-2xl px-4 py-3",
           isBot
             ? "bg-card border border-border shadow-sm"
             : "bg-primary text-primary-foreground"
         )}
       >
-        <p className="text-sm whitespace-pre-wrap leading-relaxed">
-          {message.content}
-        </p>
+        {isBot ? (
+          <div className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed prose-p:leading-relaxed prose-pre:bg-secondary prose-pre:text-secondary-foreground prose-a:text-primary hover:prose-a:text-primary/80">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        ) : (
+          <p className="text-sm whitespace-pre-wrap leading-relaxed">
+            {message.content}
+          </p>
+        )}
         
         {message.options && message.options.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
@@ -60,7 +70,7 @@ export function ChatMessage({ message, onOptionClick }: ChatMessageProps) {
 
         {/* Doctor Cards */}
         {message.doctors && message.doctors.length > 0 && (
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 space-y-3 max-w-md">
             {message.doctors.map((doctor) => (
               <div
                 key={doctor.id}
